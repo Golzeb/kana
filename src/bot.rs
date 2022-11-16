@@ -1,6 +1,9 @@
-use serenity::framework::standard::macros::{command, group};
-use serenity::framework::standard::CommandResult;
+mod commands;
+
 use serenity::framework::StandardFramework;
+use serenity::model::application::interaction::Interaction;
+use serenity::model::prelude::command::Command;
+use serenity::model::prelude::interaction::InteractionResponseType;
 use serenity::model::prelude::*;
 use serenity::{async_trait, prelude::*};
 
@@ -23,20 +26,36 @@ struct MessageHandler;
 
 #[async_trait]
 impl EventHandler for MessageHandler {
-    async fn ready(&self, _: Context, _ready: Ready) {
-        info!("Kana is running");
+    async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
+        if let Interaction::ApplicationCommand(command) = interaction {
+            let options = &command.data.options;
+            let content = match command.data.name.as_str() {
+                "ping" => commands::ping::run(options),
+                _ => "Hmm?".to_owned(),
+            };
+            use serenity::framework::standard::Command;
+
+            if let Err(why) = command
+                .create_interaction_response(&ctx.http, |response| {
+                    response
+                        .kind(InteractionResponseType::ChannelMessageWithSource)
+                        .interaction_response_data(|message| message.content(content))
+                })
+                .await
+            {
+                error!("Cannot respond to slash command: {}", why);
+            }
+        }
     }
-}
 
-#[group]
-#[commands(ping)]
-struct General;
+    async fn ready(&self, ctx: Context, _ready: Ready) {
+        info!("Kana is running");
 
-#[command]
-async fn ping(ctx: &Context, msg: &Message) -> CommandResult {
-    msg.reply(ctx, "Pong!").await.unwrap();
-
-    Ok(())
+        let commands = Command::set_global_application_commands(&ctx.http, |commands| {
+            commands.create_application_command(|command| commands::ping::register(command))
+        })
+        .await;
+    }
 }
 
 pub struct Bot {}
@@ -49,7 +68,7 @@ impl Bot {
     pub async fn start(&self, config: Config) {
         let framework = StandardFramework::new()
             .configure(|c| c.prefix(PREFIX))
-            .group(&GENERAL_GROUP);
+            .group(&commands::GENERAL_GROUP);
 
         info!("Kana v{}", build::PKG_VERSION);
         info!("Kana is starting");
