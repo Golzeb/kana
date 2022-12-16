@@ -1,6 +1,10 @@
 mod bot;
 use bot::Bot;
 use fern::colors::{Color, ColoredLevelConfig};
+use log::{debug, error, info, trace, warn};
+use shadow_rs::shadow;
+
+shadow!(build);
 
 fn init_logger() {
     let colors = ColoredLevelConfig::new()
@@ -11,15 +15,35 @@ fn init_logger() {
 
     fern::Dispatch::new()
         .format(move |out, message, record| {
+            let message_string = message.to_string();
+            let message_split: Vec<&str> = message_string.split('\n').collect();
+
+            let head = message_split[0];
+            let tail = message_split[1..].join("\n");
+
             out.finish(format_args!(
-                "{}[{}][{}] {}",
-                chrono::Local::now().format("[%Y-%m-%d][%H:%M:%S]"),
-                record.target(),
+                "{} | {:10} | {:5} | {}",
+                chrono::Local::now().format("%Y-%m-%d | %H:%M:%S"),
+                record.target().to_string().split("::").last().unwrap(),
                 colors.color(record.level()),
-                message
-            ))
+                head
+            ));
+
+            if tail.len() > 0 {
+                match record.level() {
+                    log::Level::Error => error!("{}", tail),
+                    log::Level::Warn => warn!("{}", tail),
+                    log::Level::Info => info!("{}", tail),
+                    log::Level::Debug => debug!("{}", tail),
+                    log::Level::Trace => trace!("{}", tail),
+                }
+            }
         })
-        .level(log::LevelFilter::Debug)
+        .level(if shadow_rs::is_debug() {
+            log::LevelFilter::Debug
+        } else {
+            log::LevelFilter::Debug
+        })
         .level_for("rustls", log::LevelFilter::Off)
         .level_for("serenity", log::LevelFilter::Off)
         .level_for("tracing", log::LevelFilter::Off)
