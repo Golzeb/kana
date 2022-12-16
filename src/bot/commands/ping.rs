@@ -17,7 +17,7 @@ impl Ping {
 
 #[async_trait]
 impl KanaCommand for Ping {
-    fn run_interaction(command: &ApplicationCommandInteraction) -> String {
+    async fn run_interaction(_ctx: &Context, _command: &ApplicationCommandInteraction) -> String {
         Ping::internal_ping()
     }
 

@@ -1,10 +1,11 @@
 mod commands;
 
+use std::sync::Arc;
+
 use commands::KanaCommand;
 use serenity::framework::StandardFramework;
 use serenity::model::application::interaction::Interaction;
 use serenity::model::prelude::command::Command;
-use serenity::model::prelude::interaction::InteractionResponseType;
 use serenity::model::prelude::*;
 use serenity::{async_trait, prelude::*};
 use songbird::SerenityInit;
@@ -14,6 +15,7 @@ use serde::Deserialize;
 use log::{debug, error, info, warn};
 
 use shadow_rs::shadow;
+
 shadow!(build);
 
 const PREFIX: &'static str = "!";
@@ -30,17 +32,25 @@ struct MessageHandler;
 impl EventHandler for MessageHandler {
     async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
         if let Interaction::ApplicationCommand(command) = interaction {
+            debug!(
+                "INTERACTION {} {} {}",
+                command.data.name.as_str(),
+                command.user.id.as_u64(),
+                command.guild_id.unwrap_or(GuildId(0)).as_u64()
+            );
+
+            command.defer(&ctx.http).await.unwrap();
+
             let content = match command.data.name.as_str() {
-                "ping" => commands::ping::Ping::run_interaction(&command),
+                "ping" => commands::ping::Ping::run_interaction(&ctx, &command).await,
+                "dawaj" => commands::music::play::Play::run_interaction(&ctx, &command).await,
+                "jazda" => commands::music::skip::Skip::run_interaction(&ctx, &command).await,
+                "won" => commands::music::leave::Leave::run_interaction(&ctx, &command).await,
                 _ => "Hmm?".to_owned(),
             };
 
             if let Err(why) = command
-                .create_interaction_response(&ctx.http, |response| {
-                    response
-                        .kind(InteractionResponseType::ChannelMessageWithSource)
-                        .interaction_response_data(|message| message.content(content))
-                })
+                .edit_original_interaction_response(&ctx.http, |response| response.content(content))
                 .await
             {
                 error!("Cannot respond to slash command: {}", why);
@@ -52,7 +62,20 @@ impl EventHandler for MessageHandler {
         info!("Kana is running");
 
         let _commands = Command::set_global_application_commands(&ctx.http, |commands| {
-            commands.create_application_command(|command| commands::ping::Ping::register(command))
+            debug!("Registering ping::Ping command");
+            commands.create_application_command(|command| commands::ping::Ping::register(command));
+            debug!("Registering music::Play command");
+            commands.create_application_command(|command| {
+                commands::music::play::Play::register(command)
+            });
+            debug!("Registering music::Skip command");
+            commands.create_application_command(|command| {
+                commands::music::skip::Skip::register(command)
+            });
+            debug!("Registering music::Leave command");
+            commands.create_application_command(|command| {
+                commands::music::leave::Leave::register(command)
+            })
         })
         .await;
     }
@@ -96,6 +119,14 @@ impl Bot {
             .register_songbird()
             .await
             .expect("Error creating client");
+
+        {
+            use crate::bot::commands::music::KanaSongQueue;
+            use std::collections::HashMap;
+
+            let mut data_write = client.data.write().await;
+            data_write.insert::<KanaSongQueue>(Arc::new(Mutex::new(HashMap::new())));
+        }
 
         if let Err(why) = client.start().await {
             error!("An error occured while running the client: {:?}", why);

@@ -42,7 +42,7 @@ fn init_logger() {
         .level(if shadow_rs::is_debug() {
             log::LevelFilter::Debug
         } else {
-            log::LevelFilter::Warn
+            log::LevelFilter::Debug
         })
         .level_for("rustls", log::LevelFilter::Off)
         .level_for("serenity", log::LevelFilter::Off)
